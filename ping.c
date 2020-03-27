@@ -58,7 +58,7 @@ void timer_handler(){
 
 int ping_read(void){
     ping_send_pulse();
-    while( ){} //TODO: Busy wait until state is equal to 2
+    while(state != 2){} //TODO: Busy wait until state is equal to 2
     // By this point we have both edges
     //TODO: find the difference between the times of both edges and return it
 
@@ -121,8 +121,7 @@ int main(void) {
 
     timer_init();
     lcd_init();
-    ping_init();
-    ping_trigger();
+
 
     while(1){
 
