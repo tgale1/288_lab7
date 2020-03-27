@@ -14,16 +14,19 @@
     volatile unsigned long time_mills;
 
 
-void ping_send_pulse (void) {
+void ping_send_pulse(void) {
 
-    //TODO: Disable timers by disabling AFSEL, and DIR (GPIO as out)
+    //Disable timers by disabling AFSEL, and DIR (GPIO as out)
+	
+	GPIO_PORTB_AFSEL_R |= 0x00;
+	GPIO_PORTB_DIR_R |= 0b1000;
 
     SYSCTL_RCGCGPIO_R |= 0b000010;
     while((SYSCTL_RCGCGPIO_R & 0b10) == 0){}
 
     GPIO_PORTB_DEN_R |= 0b1000;
 
-    GPIO_PORTB_DIR_R |= 0b1000;
+    //GPIO_PORTB_DIR_R |= 0b1000;
 
     GPIO_PORTB_DATA_R &= 0;
     timer_waitMicros(5);
@@ -35,24 +38,23 @@ void ping_send_pulse (void) {
     timer_waitMicros(5);
 
     //TODO: re-enable timer, re-enable AFSEL, PCTL, and DIR (Timer is an input)
+	GPIO_PORTB_AFSEL_R |= 0b100;
+	GPIO_PORTB_PCTL_R |= 0x700;
+	GPIO_PORTB_DIR_R |= 0x00;
+	
 }
 
 void timer_handler(){
 
-    /* TODO:
-     * if (state is 0)
-     *      grab the rising time
-     *      advance state
-     * else if (state is 1)
-     *      grab the falling time
-     *      advance state
-     * clear the interrupt;
-     *
-     */
-    last_time = current_time;
-    current_time = TIMER1_TAR_R; //TODO: we are using timer B here, not A
-    update_flag = 1;
-
+    
+     if (state is 0)
+          current_time = TIMER3_TBR_R;
+          state = state + 1;
+     else if (state is 1)
+          last_time = TIMER3_TBR_R;
+          state = state + 1;
+     //TODO: clear the interrupt;
+    
 
 }
 
@@ -60,20 +62,27 @@ int ping_read(void){
     ping_send_pulse();
     while(state != 2){} //TODO: Busy wait until state is equal to 2
     // By this point we have both edges
-    //TODO: find the difference between the times of both edges and return it
-
+    //find the difference between the times of both edges and return it
+	unsigned long time_diff = current_time - last_time;
+    unsigned long real_time = time_diff/32000000;
+    time_mills = real_time * 1000;
+	return time_mills;
 }
 
-void ping_init_timer (void){
+void ping_init_timer(void){
 
     SYSCTL_RCGCTIMER_R |= 0b001000;
     while((SYSCTL_RCGCTIMER_R & 0b1000) == 0){}
 
-    //TODO: AFSEL, PCTL pg 1351, and DIR (Timer is an input)
+    //AFSEL, PCTL pg 1351, and DIR (Timer is an input)
+	
+	GPIO_PORTB_AFSEL_R |= 0b100;
+	
+	GPIO_PORTB_PCTL_R |= 0x700;
 
-    GPIO_PORTB_DIR_R &= 0;
+    GPIO_PORTB_DIR_R |= 0x0;
 
-    TIMER3_CTL_R = 0; //TODO: turn it off properly TBEN
+    TIMER3_CTL_R |= 0b0xxxxxxxx; //turn it off properly TBEN
 
     TIMER3_CFG_R |= 0x4;
 
@@ -125,8 +134,13 @@ int main(void) {
 
     while(1){
 
-        // TODO: call ping read here and print its return value
-        int a = TIMER3_TBV_R;
+        //call ping read here and print its return value
+		
+		ping_read();
+		
+		ping_init_timer();
+		
+        int a = ping_getDistance();
 
         timer_waitMillis(100);
 
