@@ -16,13 +16,12 @@
 
 void ping_send_pulse(void) {
 
-    //Disable timers by disabling AFSEL, and DIR (GPIO as out)
-	
-	GPIO_PORTB_AFSEL_R |= 0x00;
-	GPIO_PORTB_DIR_R |= 0b1000;
-
     SYSCTL_RCGCGPIO_R |= 0b000010;
     while((SYSCTL_RCGCGPIO_R & 0b10) == 0){}
+    //Disable timers by disabling AFSEL, and DIR (GPIO as out)
+	
+	GPIO_PORTB_AFSEL_R &= 0b0111;
+	GPIO_PORTB_DIR_R |= 0b1000;
 
     GPIO_PORTB_DEN_R |= 0b1000;
 
@@ -38,51 +37,58 @@ void ping_send_pulse(void) {
     timer_waitMicros(5);
 
     //TODO: re-enable timer, re-enable AFSEL, PCTL, and DIR (Timer is an input)
-	GPIO_PORTB_AFSEL_R |= 0b100;
-	GPIO_PORTB_PCTL_R |= 0x700;
-	GPIO_PORTB_DIR_R |= 0x00;
+	GPIO_PORTB_AFSEL_R |= 0b1000;
+	GPIO_PORTB_PCTL_R |= 0x7000;
+	GPIO_PORTB_DIR_R |= 0b0111;
 	
 }
 
 void timer_handler(){
 
-    
-     if (state is 0)
-          current_time = TIMER3_TBR_R;
-          state = state + 1;
-     else if (state is 1)
-          last_time = TIMER3_TBR_R;
-          state = state + 1;
-     //TODO: clear the interrupt;
-    
+    if(update_flag == 0){
+	    current_time = TIMER3_TBR_R;
+	    update_flag = update_flag + 1;
+    }
+    else if(update_flag == 1){
+	    last_time = TIMER3_TBR_R;
+	    update_flag = update_flag + 1;
+    }
+    //Clear capture interrupt flag
+	TIMER3_ICR_R |= 0x400;    
 
 }
 
 int ping_read(void){
     ping_send_pulse();
-    while(state != 2){} //TODO: Busy wait until state is equal to 2
+    while(update_flag != 2){}
     // By this point we have both edges
     //find the difference between the times of both edges and return it
+	update_flag = 0;
+	
+	
 	unsigned long time_diff = current_time - last_time;
-    unsigned long real_time = time_diff/32000000;
-    time_mills = real_time * 1000;
-	return time_mills;
+    unsigned long real_time = time_diff * 62.5; //Convert to nanoseconds
+	real_time = real_time / 1000000; // Convert to milliseconds
+	return real_time;
 }
 
 void ping_init_timer(void){
 
     SYSCTL_RCGCTIMER_R |= 0b001000;
     while((SYSCTL_RCGCTIMER_R & 0b1000) == 0){}
+	
+    SYSCTL_RCGCGPIO_R |= 0b000010;
+    while((SYSCTL_RCGCGPIO_R & 0b000010) == 0){}
 
     //AFSEL, PCTL pg 1351, and DIR (Timer is an input)
 	
-	GPIO_PORTB_AFSEL_R |= 0b100;
+	GPIO_PORTB_AFSEL_R |= 0b1000;
 	
-	GPIO_PORTB_PCTL_R |= 0x700;
+	GPIO_PORTB_PCTL_R |= 0x7000;
 
-    GPIO_PORTB_DIR_R |= 0x0;
+    GPIO_PORTB_DIR_R &= 0b0111;
 
-    TIMER3_CTL_R |= 0b0xxxxxxxx; //turn it off properly TBEN
+    TIMER3_CTL_R |= 0b011111111; //turn it off properly TBEN
 
     TIMER3_CFG_R |= 0x4;
 
@@ -106,8 +112,8 @@ void ping_init_timer(void){
     // Enable event capture interrupts
     TIMER3_IMR_R |= 0x400;
     // Set up NVIC for Timer3B IC interrupts
-    NVIC_EN3_R |= 0x20;         //TODO: incorrect EN register
-    NVIC_PRI25_R |= 0x2000;     //TODO: incorrect PRI register
+    NVIC_EN1_R |= 0x10;         //TODO: incorrect EN register
+    NVIC_PRI9_R |= 0x2;     //TODO: incorrect PRI register
     //Bind Timer3B interrupt requests to your interrupt handler
     IntRegister(52, timer_handler);
     //enable timer
@@ -115,12 +121,12 @@ void ping_init_timer(void){
     IntMasterEnable();
 }
 
-float ping_getDistance (void){
+float ping_getDistance (unsigned long time_mills){
     //calculate distance
-    unsigned long time_diff = current_time - last_time;
-    unsigned long real_time = time_diff/32000000;
-    time_mills = real_time * 1000;
-    float distanceCM = real_time * 34300;
+    float distanceCM = time_mills / 1000; //Convert to seconds
+    distanceCM = distanceCM * 343; // Convert to meters
+    distanceCM = distanceCM * 100; // Convert to cm
+    distanceCM = distanceCM / 2; //Divided by 2 to get distance
 
     return distanceCM;
 }
@@ -130,20 +136,21 @@ int main(void) {
 
     timer_init();
     lcd_init();
-
+    ping_init_timer();
 
     while(1){
 
         //call ping read here and print its return value
 		
-		ping_read();
+	time_mills = ping_read();
 		
-		ping_init_timer();
 		
         int a = ping_getDistance();
 
         timer_waitMillis(100);
 
+	lcd_printf("%lu", time_mills); 
+	   
         lcd_printf("%d",a);
     }
 
