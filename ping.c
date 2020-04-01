@@ -88,7 +88,7 @@ void ping_init_timer(void){
 
     GPIO_PORTB_DIR_R &= 0b0111;
 
-    TIMER3_CTL_R |= 0b011111111; //turn it off properly TBEN
+    TIMER3_CTL_R |= 0b011111111;
 
     TIMER3_CFG_R |= 0x4;
 
@@ -112,8 +112,8 @@ void ping_init_timer(void){
     // Enable event capture interrupts
     TIMER3_IMR_R |= 0x400;
     // Set up NVIC for Timer3B IC interrupts
-    NVIC_EN1_R |= 0x10;         //TODO: incorrect EN register
-    NVIC_PRI9_R |= 0x2;     //TODO: incorrect PRI register
+    NVIC_EN1_R |= 0x10;
+    NVIC_PRI9_R |= 0x2;
     //Bind Timer3B interrupt requests to your interrupt handler
     IntRegister(52, timer_handler);
     //enable timer
